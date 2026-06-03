@@ -180,6 +180,18 @@ ic_public void ic_set_prompt_marker( const char* prompt_marker, const char* cpro
   set_prompt_marker(env, prompt_marker, cprompt_marker);
 }
 
+ic_public void ic_set_top_bar( const char* bbcode ) {
+  ic_env_t* env = ic_get_env(); if (env==NULL) return;
+  mem_free(env->mem, env->top_bar);
+  env->top_bar = (bbcode != NULL && bbcode[0] != 0 ? mem_strdup(env->mem, bbcode) : NULL);
+}
+
+ic_public void ic_set_bottom_bar( const char* bbcode ) {
+  ic_env_t* env = ic_get_env(); if (env==NULL) return;
+  mem_free(env->mem, env->bottom_bar);
+  env->bottom_bar = (bbcode != NULL && bbcode[0] != 0 ? mem_strdup(env->mem, bbcode) : NULL);
+}
+
 ic_public void ic_set_prompt_mode( const char* mode_marker, char trigger ) {
   ic_env_t* env = ic_get_env(); if (env==NULL) return;
   mem_free(env->mem, env->mode_prompt_marker);
@@ -191,6 +203,12 @@ ic_public void ic_set_mode_callback( ic_mode_fun_t* fun, void* arg ) {
   ic_env_t* env = ic_get_env(); if (env==NULL) return;
   env->mode_callback = fun;
   env->mode_arg = arg;
+}
+
+ic_public void ic_set_resize_callback( ic_resize_fun_t* fun, void* arg ) {
+  ic_env_t* env = ic_get_env(); if (env==NULL) return;
+  env->resize_callback = fun;
+  env->resize_arg = arg;
 }
 
 ic_public bool ic_get_mode_active(void) {
@@ -524,6 +542,8 @@ static void ic_env_free(ic_env_t* env) {
   mem_free(env->mem, env->cprompt_marker);
   mem_free(env->mem,env->prompt_marker);
   mem_free(env->mem, env->mode_prompt_marker);
+  mem_free(env->mem, env->top_bar);
+  mem_free(env->mem, env->bottom_bar);
   mem_free(env->mem, env->match_braces);
   mem_free(env->mem, env->auto_braces);
   env->prompt_marker = NULL;

@@ -353,6 +353,18 @@ void ic_set_mode_callback( ic_mode_fun_t* fun, void* arg );
 /// Get whether the prompt mode is currently active.
 bool ic_get_mode_active(void);
 
+/// Set a persistent bar (bbcode markup) rendered above the input. Pass \a NULL
+/// or an empty string to remove it.
+void ic_set_top_bar( const char* bbcode );
+
+/// Set a persistent status bar (bbcode markup, may contain newlines) rendered
+/// below the input. Pass \a NULL or an empty string to remove it.
+void ic_set_bottom_bar( const char* bbcode );
+
+/// Callback invoked on terminal resize, before re-render, to refit the bars.
+typedef void (ic_resize_fun_t)(void* arg);
+void ic_set_resize_callback( ic_resize_fun_t* fun, void* arg );
+
 /// Disable or enable multi-line input (enabled by default).
 /// Returns the previous setting.
 bool ic_enable_multiline( bool enable );

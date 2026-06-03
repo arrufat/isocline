@@ -28,9 +28,7 @@ WINBASEAPI ULONGLONG WINAPI GetTickCount64(VOID);
 #include <termios.h>
 #include <sys/ioctl.h>
 #include <sys/select.h>
-#if !defined(FIONREAD)
 #include <fcntl.h>
-#endif
 #endif
 
 #define TTY_PUSH_MAX (32)
@@ -56,6 +54,11 @@ struct tty_s {
   struct termios  raw_ios;          // raw terminal settings
   #endif
 };
+
+#if !defined(_WIN32)
+// the SIGWINCH handler writes here to wake a blocking read on any thread
+static int sig_resize_pipe[2] = { -1, -1 };
+#endif
 
 
 //-------------------------------------------------------------
@@ -468,7 +471,27 @@ ic_private bool tty_readc_noblock(tty_t* tty, uint8_t* c, long timeout_ms)
 
   // blocking read?
   if (timeout_ms < 0) {
-    return tty_readc_blocking(tty,c);
+    // wait for input or a resize (self-pipe), no timeout
+    while (true) {
+      fd_set readset;
+      FD_ZERO(&readset);
+      FD_SET(tty->fd_in, &readset);
+      int maxfd = tty->fd_in;
+      if (sig_resize_pipe[0] >= 0) {
+        FD_SET(sig_resize_pipe[0], &readset);
+        if (sig_resize_pipe[0] > maxfd) maxfd = sig_resize_pipe[0];
+      }
+      if (select(maxfd + 1, &readset, NULL, NULL, NULL) < 0) {
+        if (errno == EINTR) { if (tty->term_resize_event) return false; else continue; }
+        return false;
+      }
+      if (sig_resize_pipe[0] >= 0 && FD_ISSET(sig_resize_pipe[0], &readset)) {
+        uint8_t drain[64];
+        while (read(sig_resize_pipe[0], drain, sizeof(drain)) > 0) { /* empty the pipe */ }
+        if (tty->term_resize_event) return false;
+      }
+      if (FD_ISSET(tty->fd_in, &readset)) return tty_readc_blocking(tty, c);
+    }
   }
 
   // if supported, peek first if any char is available.
@@ -592,6 +615,8 @@ static void sig_handler(int signum, siginfo_t* siginfo, void* uap ) {
     if (sig_tty != NULL) {
       sig_tty->term_resize_event = true;
     }
+    // wake a blocking read (async-signal-safe write)
+    if (sig_resize_pipe[1] >= 0) { if (write(sig_resize_pipe[1], "x", 1) < 0) { /* ignore */ } }
   }
   else {
     // the rest are termination signals; restore the terminal mode. (`tcsetattr` is signal-safe)
@@ -612,6 +637,15 @@ static void sig_handler(int signum, siginfo_t* siginfo, void* uap ) {
 
 static void signals_install(tty_t* tty) {
   sig_tty = tty;
+  // create the resize self-pipe
+  if (sig_resize_pipe[0] < 0 && pipe(sig_resize_pipe) == 0) {
+    for (int k = 0; k < 2; k++) {
+      int fl = fcntl(sig_resize_pipe[k], F_GETFL, 0);
+      if (fl >= 0) { fcntl(sig_resize_pipe[k], F_SETFL, fl | O_NONBLOCK); }
+      int fd = fcntl(sig_resize_pipe[k], F_GETFD, 0);
+      if (fd >= 0) { fcntl(sig_resize_pipe[k], F_SETFD, fd | FD_CLOEXEC); }
+    }
+  }
   // generic signal handler
   struct sigaction handler;
   memset(&handler,0,sizeof(handler));
@@ -640,6 +674,8 @@ static void signals_restore(void) {
       sigaction( sh->signum, &sh->action.previous, NULL );
     };
   }
+  if (sig_resize_pipe[0] >= 0) { close(sig_resize_pipe[0]); sig_resize_pipe[0] = -1; }
+  if (sig_resize_pipe[1] >= 0) { close(sig_resize_pipe[1]); sig_resize_pipe[1] = -1; }
   sig_tty = NULL;
 }
 

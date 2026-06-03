@@ -325,10 +325,18 @@ static const char* attr_update_property( tag_t* tag, const char* attr_name, cons
     if (b != IC_NONE) { tag->attr.x.bold = b; }
     return fname;
   }
+  fname = "faint";
+  if (strcmp(attr_name,fname) == 0) {
+    signed int b = IC_NONE;
+    attr_update_bool(fname,&b, value);
+    if (b == IC_ON) { tag->attr.x.bold = IC_FAINT; }
+    else if (b == IC_OFF) { tag->attr.x.bold = IC_OFF; }
+    return fname;
+  }
   fname = "italic";
-  if (strcmp(attr_name,fname) == 0) {    
-    signed int b = IC_NONE;      
-    attr_update_bool(fname,&b, value); 
+  if (strcmp(attr_name,fname) == 0) {
+    signed int b = IC_NONE;
+    attr_update_bool(fname,&b, value);
     if (b != IC_NONE) { tag->attr.x.italic = b; }
     return fname;
   }

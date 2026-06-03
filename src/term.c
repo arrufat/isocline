@@ -169,7 +169,8 @@ ic_private void term_set_attr( term_t* term, attr_t attr ) {
     }
   }
   if (attr.x.bold != term->attr.x.bold && attr.x.bold != IC_NONE) {
-    term_bold(term,attr.x.bold == IC_ON);
+    if (attr.x.bold == IC_FAINT) { term_write(term, IC_CSI "2m"); }
+    else { term_bold(term, attr.x.bold == IC_ON); }
   }
   if (attr.x.underline != term->attr.x.underline && attr.x.underline != IC_NONE) {
     term_underline(term,attr.x.underline == IC_ON);

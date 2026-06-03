@@ -15,9 +15,10 @@
 // text attributes
 //-------------------------------------------------------------
 
-#define IC_ON   (1)
-#define IC_OFF  (-1)
-#define IC_NONE (0)
+#define IC_ON    (1)
+#define IC_OFF   (-1)
+#define IC_NONE  (0)
+#define IC_FAINT (-2)   // reuses the (signed 2-bit) bold field for reduced intensity
 
 // try to fit in 64 bits 
 // note: order is important for some compilers

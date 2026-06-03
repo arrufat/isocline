@@ -36,6 +36,10 @@ struct ic_env_s {
   bool            mode_active;      // is the prompt mode active? (persists across ic_readline calls)
   ic_mode_fun_t*  mode_callback;    // notified when the mode is entered/exited (may be NULL)
   void*           mode_arg;         // user state for the mode callback
+  const char*     top_bar;          // persistent bar rendered above the input (NULL disables)
+  const char*     bottom_bar;       // persistent status bar rendered below the input (NULL disables)
+  ic_resize_fun_t* resize_callback; // notified on terminal resize (may be NULL)
+  void*           resize_arg;       // user state for the resize callback
   ic_highlight_fun_t* highlighter;  // highlight callback
   void*           highlighter_arg;  // user state for the highlighter.
   ic_hint_fun_t*  hinter;           // hint callback

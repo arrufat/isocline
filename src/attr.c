@@ -106,6 +106,7 @@ ic_private attr_t attr_from_sgr( const char* s, ssize_t len) {
     switch(cmd) {
       case  0: attr = attr_default(); break;
       case  1: attr.x.bold = IC_ON; break;
+      case  2: attr.x.bold = IC_FAINT; break;
       case  3: attr.x.italic = IC_ON; break;
       case  4: attr.x.underline = IC_ON; break;
       case  7: attr.x.reverse = IC_ON; break;
