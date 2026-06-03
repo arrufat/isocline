@@ -262,7 +262,39 @@ static void edit_refresh_rows(ic_env_t* env, editor_t* eb, stringbuf_t* input, a
 }
 
 
-static void edit_refresh(ic_env_t* env, editor_t* eb) 
+// is a persistent bar set and non-empty?
+static inline bool bar_active(const char* bar) {
+  return (bar != NULL && bar[0] != 0);
+}
+
+// build the buffer rendered below the input: completion menu (+ hint help) and/or
+// the bottom bar. Returns NULL when there is nothing to show. `attrs` may be NULL.
+static stringbuf_t* edit_build_extra(ic_env_t* env, editor_t* eb, attrbuf_t* attrs) {
+  if (sbuf_len(eb->extra) == 0 && !bar_active(env->bottom_bar)) return NULL;
+  stringbuf_t* extra = sbuf_new(eb->mem);
+  if (extra == NULL) return NULL;
+  if (sbuf_len(eb->hint_help) > 0) {
+    bbcode_append(env->bbcode, sbuf_string(eb->hint_help), extra, attrs);
+  }
+  bbcode_append(env->bbcode, sbuf_string(eb->extra), extra, attrs);
+  if (bar_active(env->bottom_bar)) {
+    if (sbuf_len(extra) > 0) { bbcode_append(env->bbcode, "\n", extra, attrs); }
+    bbcode_append(env->bbcode, env->bottom_bar, extra, attrs);
+  }
+  return extra;
+}
+
+// build the buffer rendered above the input: the top bar, or NULL if unset.
+// `attrs` may be NULL.
+static stringbuf_t* edit_build_top(ic_env_t* env, editor_t* eb, attrbuf_t* attrs) {
+  if (!bar_active(env->top_bar)) return NULL;
+  stringbuf_t* top = sbuf_new(eb->mem);
+  if (top == NULL) return NULL;
+  bbcode_append(env->bbcode, env->top_bar, top, attrs);
+  return top;
+}
+
+static void edit_refresh(ic_env_t* env, editor_t* eb)
 {
   // calculate the new cursor row and total rows needed
   ssize_t promptw, cpromptw;
@@ -287,43 +319,16 @@ static void edit_refresh(ic_env_t* env, editor_t* eb)
     sbuf_insert_at(eb->input, sbuf_string(eb->hint), eb->pos );
   }
 
-  // render extra (like a completion menu)
-  const bool has_bottom_bar = (env->bottom_bar != NULL && env->bottom_bar[0] != 0);
-  stringbuf_t* extra = NULL;
-  if (sbuf_len(eb->extra) > 0 || has_bottom_bar) {
-    extra = sbuf_new(eb->mem);
-    if (extra != NULL) {
-      if (sbuf_len(eb->hint_help) > 0) {
-        bbcode_append(env->bbcode, sbuf_string(eb->hint_help), extra, eb->attrs_extra);
-      }
-      bbcode_append(env->bbcode, sbuf_string(eb->extra), extra, eb->attrs_extra);
-      if (has_bottom_bar) {
-        if (sbuf_len(extra) > 0) { bbcode_append(env->bbcode, "\n", extra, eb->attrs_extra); }
-        bbcode_append(env->bbcode, env->bottom_bar, extra, eb->attrs_extra);
-      }
-    }
-  }
-
-  const bool has_top_bar = (env->top_bar != NULL && env->top_bar[0] != 0);
-  stringbuf_t* top = NULL;
-  if (has_top_bar) {
-    top = sbuf_new(eb->mem);
-    if (top != NULL) { bbcode_append(env->bbcode, env->top_bar, top, eb->attrs_top); }
-  }
+  // build the stacked regions: top bar, input, extra (completion menu / bottom bar)
+  stringbuf_t* top = edit_build_top(env, eb, eb->attrs_top);
+  stringbuf_t* extra = edit_build_extra(env, eb, eb->attrs_extra);
 
   // calculate rows and row/col position
   rowcol_t rc = { 0 };
+  rowcol_t rc_dummy = { 0 };
+  const ssize_t rows_top   = (top == NULL ? 0 : sbuf_get_rc_at_pos( top, eb->termw, 0, 0, 0 /*pos*/, &rc_dummy ));
   const ssize_t rows_input = sbuf_get_rc_at_pos( eb->input, eb->termw, promptw, cpromptw, eb->pos, &rc );
-  rowcol_t rc_extra = { 0 };
-  ssize_t rows_extra = 0;
-  if (extra != NULL) {
-    rows_extra = sbuf_get_rc_at_pos( extra, eb->termw, 0, 0, 0 /*pos*/, &rc_extra );
-  }
-  rowcol_t rc_top = { 0 };
-  ssize_t rows_top = 0;
-  if (top != NULL) {
-    rows_top = sbuf_get_rc_at_pos( top, eb->termw, 0, 0, 0 /*pos*/, &rc_top );
-  }
+  const ssize_t rows_extra = (extra == NULL ? 0 : sbuf_get_rc_at_pos( extra, eb->termw, 0, 0, 0 /*pos*/, &rc_dummy ));
   const ssize_t rows = rows_top + rows_input + rows_extra;
   const ssize_t cursor_row = rows_top + rc.row;
   debug_msg("edit: refresh: rows %zd, cursor: %zd,%zd (previous rows %zd, cursor row %zd)\n", rows, rc.row, rc.col, eb->cur_rows, eb->cur_row);
@@ -347,7 +352,7 @@ static void edit_refresh(ic_env_t* env, editor_t* eb)
   term_up(env->term, (eb->cur_row >= termh ? termh-1 : eb->cur_row) );
   // term_clear_lines_to_end(env->term);  // gives flicker in old Windows cmd prompt 
 
-  // render rows
+  // render rows: top bar, then input, then extra (each stacked below the previous)
   if (rows_top > 0) {
     edit_refresh_rows( env, eb, top, eb->attrs_top, 0, 0, true, first_row, last_row );
   }
@@ -439,39 +444,14 @@ static bool edit_resize(ic_env_t* env, editor_t* eb ) {
   edit_get_prompt_width( env, eb, false, &promptw, &cpromptw );
   sbuf_insert_at(eb->input, sbuf_string(eb->hint), eb->pos); // insert used hint    
   
-  // render extra (like a completion menu)
-  const bool has_bottom_bar = (env->bottom_bar != NULL && env->bottom_bar[0] != 0);
-  stringbuf_t* extra = NULL;
-  if (sbuf_len(eb->extra) > 0 || has_bottom_bar) {
-    extra = sbuf_new(eb->mem);
-    if (extra != NULL) {
-      if (sbuf_len(eb->hint_help) > 0) {
-        bbcode_append(env->bbcode, sbuf_string(eb->hint_help), extra, NULL);
-      }
-      bbcode_append(env->bbcode, sbuf_string(eb->extra), extra, NULL);
-      if (has_bottom_bar) {
-        if (sbuf_len(extra) > 0) { bbcode_append(env->bbcode, "\n", extra, NULL); }
-        bbcode_append(env->bbcode, env->bottom_bar, extra, NULL);
-      }
-    }
-  }
+  // build the stacked regions and measure each against the new width (no attrs needed)
+  stringbuf_t* top = edit_build_top(env, eb, NULL);
+  stringbuf_t* extra = edit_build_extra(env, eb, NULL);
   rowcol_t rc = { 0 };
+  rowcol_t rc_dummy = { 0 };
+  const ssize_t rows_top   = (top == NULL ? 0 : sbuf_get_wrapped_rc_at_pos( top, eb->termw, newtermw, 0, 0, 0 /*pos*/, &rc_dummy ));
   const ssize_t rows_input = sbuf_get_wrapped_rc_at_pos( eb->input, eb->termw, newtermw, promptw, cpromptw, eb->pos, &rc );
-  rowcol_t rc_extra = { 0 };
-  ssize_t rows_extra = 0;
-  if (extra != NULL) {
-    rows_extra = sbuf_get_wrapped_rc_at_pos(extra, eb->termw, newtermw, 0, 0, 0 /*pos*/, &rc_extra);
-  }
-  stringbuf_t* top = NULL;
-  ssize_t rows_top = 0;
-  if (env->top_bar != NULL && env->top_bar[0] != 0) {
-    top = sbuf_new(eb->mem);
-    if (top != NULL) {
-      rowcol_t rc_top = { 0 };
-      bbcode_append(env->bbcode, env->top_bar, top, NULL);
-      rows_top = sbuf_get_wrapped_rc_at_pos(top, eb->termw, newtermw, 0, 0, 0 /*pos*/, &rc_top);
-    }
-  }
+  const ssize_t rows_extra = (extra == NULL ? 0 : sbuf_get_wrapped_rc_at_pos( extra, eb->termw, newtermw, 0, 0, 0 /*pos*/, &rc_dummy ));
   ssize_t rows = rows_top + rows_input + rows_extra;
   debug_msg("edit: resize: new rows: %zd, cursor row: %zd (previous: rows: %zd, cursor row %zd)\n", rows, rc.row, eb->cur_rows, eb->cur_row);
 
@@ -971,8 +951,7 @@ static char* edit_line( ic_env_t* env, const char* prompt_text )
   edit_write_prompt(env, &eb, 0, false);
 
   // draw the bars immediately
-  if ((env->top_bar != NULL && env->top_bar[0] != 0) ||
-      (env->bottom_bar != NULL && env->bottom_bar[0] != 0)) {
+  if (bar_active(env->top_bar) || bar_active(env->bottom_bar)) {
     edit_refresh(env, &eb);
   }
 

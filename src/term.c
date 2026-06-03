@@ -134,6 +134,10 @@ ic_private void term_bold(term_t* term, bool on) {
   term_write(term, on ? IC_CSI "1m" : IC_CSI "22m" );
 }
 
+ic_private void term_faint(term_t* term, bool on) {
+  term_write(term, on ? IC_CSI "2m" : IC_CSI "22m" );
+}
+
 ic_private void term_italic(term_t* term, bool on) {
   term_write(term, on ? IC_CSI "3m" : IC_CSI "23m" );
 }
@@ -169,7 +173,7 @@ ic_private void term_set_attr( term_t* term, attr_t attr ) {
     }
   }
   if (attr.x.bold != term->attr.x.bold && attr.x.bold != IC_NONE) {
-    if (attr.x.bold == IC_FAINT) { term_write(term, IC_CSI "2m"); }
+    if (attr.x.bold == IC_FAINT) { term_faint(term, true); }
     else { term_bold(term, attr.x.bold == IC_ON); }
   }
   if (attr.x.underline != term->attr.x.underline && attr.x.underline != IC_NONE) {

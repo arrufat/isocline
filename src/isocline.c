@@ -180,16 +180,20 @@ ic_public void ic_set_prompt_marker( const char* prompt_marker, const char* cpro
   set_prompt_marker(env, prompt_marker, cprompt_marker);
 }
 
+// replace an owned bar string, normalizing NULL/empty to NULL
+static void set_bar( ic_env_t* env, const char** bar, const char* bbcode ) {
+  mem_free(env->mem, *bar);
+  *bar = (bbcode != NULL && bbcode[0] != 0 ? mem_strdup(env->mem, bbcode) : NULL);
+}
+
 ic_public void ic_set_top_bar( const char* bbcode ) {
   ic_env_t* env = ic_get_env(); if (env==NULL) return;
-  mem_free(env->mem, env->top_bar);
-  env->top_bar = (bbcode != NULL && bbcode[0] != 0 ? mem_strdup(env->mem, bbcode) : NULL);
+  set_bar(env, &env->top_bar, bbcode);
 }
 
 ic_public void ic_set_bottom_bar( const char* bbcode ) {
   ic_env_t* env = ic_get_env(); if (env==NULL) return;
-  mem_free(env->mem, env->bottom_bar);
-  env->bottom_bar = (bbcode != NULL && bbcode[0] != 0 ? mem_strdup(env->mem, bbcode) : NULL);
+  set_bar(env, &env->bottom_bar, bbcode);
 }
 
 ic_public void ic_set_prompt_mode( const char* mode_marker, char trigger ) {
