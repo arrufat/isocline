@@ -448,13 +448,23 @@ static bool edit_resize(ic_env_t* env, editor_t* eb ) {
   sbuf_free(top);
   debug_msg("edit: resize: cursor row: %zd (previous rows: %zd, cursor row %zd)\n", cursor_row, eb->cur_rows, eb->cur_row);
 
+  // The terminal answers ESC[6n only after applying the pending resize, so this
+  // query is a barrier that lets the reflow settle before we repaint; without it
+  // the repaint races an in-flight reflow (macOS leaves the frame stacked). The
+  // reported row also clamps the step so we never anchor above the viewport.
+  const ssize_t termh = term_get_height(env->term);
+  ssize_t up = (cursor_row >= termh ? termh - 1 : cursor_row);
+  ssize_t r_cur = 0, c_cur = 0;
+  if (term_get_cursor_pos_raw(env->term, &r_cur, &c_cur) && up > r_cur - 1) {
+    up = r_cur - 1;
+  }
+
   // re-anchor to the top of the old frame, erase it, then repaint at the new width;
   // repainting in place would leave the old rewrapped bars stacked above the input.
   // erase and repaint are buffered together so they land as a single frame.
-  const ssize_t termh = term_get_height(env->term);
   buffer_mode_t bmode = term_set_buffer_mode(env->term, BUFFERED);
   term_start_of_line(env->term);
-  term_up(env->term, (cursor_row >= termh ? termh - 1 : cursor_row));
+  term_up(env->term, up);
   term_clear_to_end_of_screen(env->term);
   eb->cur_row  = 0;
   eb->cur_rows = 0;
