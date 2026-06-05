@@ -660,4 +660,3 @@ ic_public void ic_init( bool use_std_err ) {
   assert(rpenv == NULL);
   ic_init_custom_malloc_ex(NULL,NULL,NULL,use_std_err);
 }
-

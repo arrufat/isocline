@@ -369,18 +369,13 @@ static void edit_refresh(ic_env_t* env, editor_t* eb)
     edit_refresh_rows(env, eb, extra, eb->attrs_extra, 0, 0, true, first_rowx, last_rowx);
   }
     
-  // overwrite trailing rows we do not use anymore  
-  ssize_t rrows = last_row - first_row + 1;  // rendered rows
+  // erase rows left over from a taller previous frame (ESC[J, no cursor move and
+  // no scrolling, unlike trailing newlines)
+  const ssize_t rrows = last_row - first_row + 1;  // rendered rows
   if (rrows < termh && rows < eb->cur_rows) {
-    ssize_t clear = eb->cur_rows - rows;
-    while (rrows < termh && clear > 0) {
-      clear--;
-      rrows++;
-      term_writeln(env->term,"");
-      term_clear_line(env->term);
-    }
+    term_clear_to_end_of_screen(env->term);
   }
-  
+
   // move cursor back to edit position
   term_start_of_line(env->term);
   term_up(env->term, first_row + rrows - 1 - cursor_row );
@@ -439,39 +434,37 @@ static bool edit_resize(ic_env_t* env, editor_t* eb ) {
   ssize_t newtermw = term_get_width(env->term);
   if (eb->termw == newtermw) return false;
 
-  // recalculate the row layout assuming the hardwrapping for the new terminal width
+  // measure the cursor row in the old frame reflowed to the new width
   ssize_t promptw, cpromptw;
   edit_get_prompt_width( env, eb, false, &promptw, &cpromptw );
-  sbuf_insert_at(eb->input, sbuf_string(eb->hint), eb->pos); // insert used hint    
-  
-  // build the stacked regions and measure each against the new width (no attrs needed)
+  sbuf_insert_at(eb->input, sbuf_string(eb->hint), eb->pos); // insert used hint
   stringbuf_t* top = edit_build_top(env, eb, NULL);
-  stringbuf_t* extra = edit_build_extra(env, eb, NULL);
   rowcol_t rc = { 0 };
   rowcol_t rc_dummy = { 0 };
-  const ssize_t rows_top   = (top == NULL ? 0 : sbuf_get_wrapped_rc_at_pos( top, eb->termw, newtermw, 0, 0, 0 /*pos*/, &rc_dummy ));
-  const ssize_t rows_input = sbuf_get_wrapped_rc_at_pos( eb->input, eb->termw, newtermw, promptw, cpromptw, eb->pos, &rc );
-  const ssize_t rows_extra = (extra == NULL ? 0 : sbuf_get_wrapped_rc_at_pos( extra, eb->termw, newtermw, 0, 0, 0 /*pos*/, &rc_dummy ));
-  ssize_t rows = rows_top + rows_input + rows_extra;
-  debug_msg("edit: resize: new rows: %zd, cursor row: %zd (previous: rows: %zd, cursor row %zd)\n", rows, rc.row, eb->cur_rows, eb->cur_row);
-
-  // update the newly calculated row and rows
-  eb->cur_row = rows_top + rc.row;
-  if (rows > eb->cur_rows) {
-    eb->cur_rows = rows;
-  }
-  eb->termw = newtermw;
-
-  // let the app refit the bars to the new width
-  if (env->resize_callback != NULL) { env->resize_callback(env->resize_arg); }
-  edit_refresh(env,eb);
-
-  // remove hint again
-  sbuf_delete_at(eb->input, eb->pos, sbuf_len(eb->hint));
-  sbuf_free(extra);
+  const ssize_t rows_top = (top == NULL ? 0 : sbuf_get_wrapped_rc_at_pos( top, eb->termw, newtermw, 0, 0, 0 /*pos*/, &rc_dummy ));
+  sbuf_get_wrapped_rc_at_pos( eb->input, eb->termw, newtermw, promptw, cpromptw, eb->pos, &rc );
+  const ssize_t cursor_row = rows_top + rc.row;
+  sbuf_delete_at(eb->input, eb->pos, sbuf_len(eb->hint)); // remove hint again
   sbuf_free(top);
+  debug_msg("edit: resize: cursor row: %zd (previous rows: %zd, cursor row %zd)\n", cursor_row, eb->cur_rows, eb->cur_row);
+
+  // re-anchor to the top of the old frame, erase it, then repaint at the new width;
+  // repainting in place would leave the old rewrapped bars stacked above the input.
+  // erase and repaint are buffered together so they land as a single frame.
+  const ssize_t termh = term_get_height(env->term);
+  buffer_mode_t bmode = term_set_buffer_mode(env->term, BUFFERED);
+  term_start_of_line(env->term);
+  term_up(env->term, (cursor_row >= termh ? termh - 1 : cursor_row));
+  term_clear_to_end_of_screen(env->term);
+  eb->cur_row  = 0;
+  eb->cur_rows = 0;
+  eb->termw    = newtermw;
+
+  if (env->resize_callback != NULL) { env->resize_callback(env->resize_arg); }
+  edit_refresh(env,eb); // flushes the buffered erase together with the repaint
+  term_set_buffer_mode(env->term, bmode);
   return true;
-} 
+}
 
 static void editor_append_hint_help(editor_t* eb, const char* help) {
   sbuf_clear(eb->hint_help);
@@ -986,7 +979,9 @@ static char* edit_line( ic_env_t* env, const char* prompt_text )
     
     // update terminal in case of a resize
     if (tty_term_resize_event(env->tty)) {
-      edit_resize(env,&eb);            
+      // debounce the burst of resize events from a window drag: repaint once settled
+      while (tty_await_resize_settle(env->tty, 50)) { /* coalesce the burst */ }
+      edit_resize(env,&eb);
     }
 
     // clear hint only after a potential resize (so resize row calculations are correct)

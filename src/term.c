@@ -106,6 +106,11 @@ ic_private void term_clear_to_end_of_line(term_t* term) {
   term_write(term, IC_CSI "K");
 }
 
+// erase from the cursor to the end of the display, leaving the cursor in place
+ic_private void term_clear_to_end_of_screen(term_t* term) {
+  term_write(term, IC_CSI "J");
+}
+
 ic_private void term_start_of_line(term_t* term) {
   term_write( term, "\r" );
 }

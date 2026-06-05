@@ -37,6 +37,7 @@ ic_private bool   code_is_unicode(code_t c, unicode_t* uchr);
 ic_private bool   code_is_virt_key(code_t c );
 
 ic_private bool   tty_term_resize_event(tty_t* tty); // did the terminal resize?
+ic_private bool   tty_await_resize_settle(tty_t* tty, long timeout_ms); // wait for a resize burst to settle
 ic_private bool   tty_async_stop(const tty_t* tty);  // unblock the read asynchronously
 ic_private void   tty_set_esc_delay(tty_t* tty, long initial_delay_ms, long followup_delay_ms);
 
