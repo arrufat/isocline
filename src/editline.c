@@ -1049,6 +1049,12 @@ static char* edit_line( ic_env_t* env, const char* prompt_text )
       else if (eb.pos == 0 && editor_pos_is_at_end(&eb)) break;  // ESC on empty input returns with empty input
       else edit_delete_all(env,&eb); // otherwise delete the current input
     }
+    else if (c == KEY_BACKSP && env->mode_active && eb.pos == 0 && editor_pos_is_at_end(&eb)) {
+      // in mode, Backspace on an empty buffer exits the mode (like Escape)
+      env->mode_active = false;
+      if (env->mode_callback != NULL) env->mode_callback(false, env->mode_arg);
+      edit_refresh(env,&eb);
+    }
     else if (c == KEY_BELL /* ^G */ || c == KEY_CTRL_C) {
       edit_delete_all(env,&eb);
       break; // ctrl+G or ctrl+c cancels (and returns empty input)
