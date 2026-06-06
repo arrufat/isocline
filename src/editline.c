@@ -1010,6 +1010,10 @@ static char* edit_line( ic_env_t* env, const char* prompt_text )
       }
     }
     
+    // Kitty protocol reports the shift modifier; fold it back so the dispatch
+    // doesn't drop Shift+Backspace.
+    if (c == WITH_SHIFT(KEY_BACKSP)) c = KEY_BACKSP;
+
     // update terminal in case of a resize
     if (tty_term_resize_event(env->tty)) {
       // debounce the burst of resize events from a window drag: repaint once settled
