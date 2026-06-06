@@ -353,6 +353,12 @@ void ic_set_mode_callback( ic_mode_fun_t* fun, void* arg );
 /// Get whether the prompt mode is currently active.
 bool ic_get_mode_active(void);
 
+/// Set the callback invoked when a first Escape on a non-empty line arms the
+/// "press Escape again to clear" confirmation (\a active true), or when it is
+/// disarmed (a second Escape, any other key, or a timeout). Mirrors the mode
+/// callback so a host can surface a hint while the confirmation is pending.
+void ic_set_esc_clear_callback( ic_mode_fun_t* fun, void* arg );
+
 /// Set a persistent bar (bbcode markup) rendered above the input. Pass \a NULL
 /// or an empty string to remove it.
 void ic_set_top_bar( const char* bbcode );

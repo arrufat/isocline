@@ -36,6 +36,9 @@ struct ic_env_s {
   bool            mode_active;      // is the prompt mode active? (persists across ic_readline calls)
   ic_mode_fun_t*  mode_callback;    // notified when the mode is entered/exited (may be NULL)
   void*           mode_arg;         // user state for the mode callback
+  bool            esc_clear_pending; // a first Esc on a non-empty line armed "press Esc again to clear"
+  ic_mode_fun_t*  esc_clear_callback; // notified when the esc-clear confirmation is armed/disarmed (may be NULL)
+  void*           esc_clear_arg;    // user state for the esc-clear callback
   const char*     top_bar;          // persistent bar rendered above the input (NULL disables)
   const char*     bottom_bar;       // persistent status bar rendered below the input (NULL disables)
   ic_resize_fun_t* resize_callback; // notified on terminal resize (may be NULL)

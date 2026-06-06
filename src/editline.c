@@ -689,7 +689,16 @@ static void edit_delete_all(ic_env_t* env, editor_t* eb) {
   edit_refresh(env,eb);
 }
 
-static void edit_delete_to_end_of_line(ic_env_t* env, editor_t* eb) { 
+// Auto-cancel window for the armed "press Esc again to clear" confirmation.
+#define IC_ESC_CLEAR_TIMEOUT_MS  (2000)
+
+static void edit_esc_clear_set(ic_env_t* env, bool pending) {
+  if (env->esc_clear_pending == pending) return;
+  env->esc_clear_pending = pending;
+  if (env->esc_clear_callback != NULL) env->esc_clear_callback(pending, env->esc_clear_arg);
+}
+
+static void edit_delete_to_end_of_line(ic_env_t* env, editor_t* eb) {
   ssize_t start = sbuf_find_line_start(eb->input,eb->pos);
   if (start < 0) return;
   ssize_t end = sbuf_find_line_end(eb->input,eb->pos);
@@ -966,7 +975,15 @@ static char* edit_line( ic_env_t* env, const char* prompt_text )
   while(true) {    
     // read a character
     term_flush(env->term);
-    if (env->hint_delay <= 0 || sbuf_len(eb.hint) == 0) {
+    if (env->esc_clear_pending) {
+      // time out so the armed confirmation cancels without further input
+      if (!tty_read_timeout(env->tty, IC_ESC_CLEAR_TIMEOUT_MS, &c)) {
+        edit_esc_clear_set(env, false);
+        edit_refresh(env, &eb);
+        continue;
+      }
+    }
+    else if (env->hint_delay <= 0 || sbuf_len(eb.hint) == 0) {
       // blocking read
       c = tty_read(env->tty);
     }
@@ -998,6 +1015,11 @@ static char* edit_line( ic_env_t* env, const char* prompt_text )
     const bool had_hint = (sbuf_len(eb.hint) > 0);
     sbuf_clear(eb.hint);
     sbuf_clear(eb.hint_help);
+
+    // any key but a confirming Esc cancels a pending "press Esc again to clear"
+    if (env->esc_clear_pending && c != KEY_ESC) {
+      edit_esc_clear_set(env, false);
+    }
 
     // if the user tries to move into a hint with left-cursor or end, we complete it first
     if ((c == KEY_RIGHT || c == KEY_END) && had_hint) {
@@ -1039,18 +1061,26 @@ static char* edit_line( ic_env_t* env, const char* prompt_text )
       break; // STOP event quits with NULL
     }
     else if (c == KEY_ESC) {
-      if (env->mode_active) {
-        // in mode, Escape exits the mode instead of returning the line
-        env->mode_active = false;
-        if (env->mode_callback != NULL) env->mode_callback(false, env->mode_arg);
-        edit_delete_all(env,&eb);
+      if (env->esc_clear_pending) {
+        edit_esc_clear_set(env, false);
+        edit_delete_all(env,&eb); // stays in the current mode
+      }
+      else if (eb.pos == 0 && editor_pos_is_at_end(&eb)) {
+        if (env->mode_active) {
+          env->mode_active = false;
+          if (env->mode_callback != NULL) env->mode_callback(false, env->mode_arg);
+          edit_refresh(env,&eb);
+        }
+        else if (had_hint) edit_refresh(env,&eb); // repaint only to drop a ghost hint
+        continue;
+      }
+      else {
+        edit_esc_clear_set(env, true); // arm rather than clear
         edit_refresh(env,&eb);
       }
-      else if (eb.pos == 0 && editor_pos_is_at_end(&eb)) break;  // ESC on empty input returns with empty input
-      else edit_delete_all(env,&eb); // otherwise delete the current input
     }
     else if (c == KEY_BACKSP && env->mode_active && eb.pos == 0 && editor_pos_is_at_end(&eb)) {
-      // in mode, Backspace on an empty buffer exits the mode (like Escape)
+      // Backspace on an empty buffer exits the mode, mirroring Escape
       env->mode_active = false;
       if (env->mode_callback != NULL) env->mode_callback(false, env->mode_arg);
       edit_refresh(env,&eb);
