@@ -39,6 +39,9 @@ struct ic_env_s {
   bool            esc_clear_pending; // a first Esc on a non-empty line armed "press Esc again to clear"
   ic_mode_fun_t*  esc_clear_callback; // notified when the esc-clear confirmation is armed/disarmed (may be NULL)
   void*           esc_clear_arg;    // user state for the esc-clear callback
+  bool            ctrl_d_exit_pending; // a first Ctrl-D on an empty line armed "press Ctrl-D again to exit"
+  ic_mode_fun_t*  ctrl_d_callback;  // notified when the ctrl-d exit confirmation is armed/disarmed (may be NULL)
+  void*           ctrl_d_arg;       // user state for the ctrl-d callback
   const char*     top_bar;          // persistent bar rendered above the input (NULL disables)
   const char*     bottom_bar;       // persistent status bar rendered below the input (NULL disables)
   ic_resize_fun_t* resize_callback; // notified on terminal resize (may be NULL)

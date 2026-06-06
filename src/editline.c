@@ -689,13 +689,19 @@ static void edit_delete_all(ic_env_t* env, editor_t* eb) {
   edit_refresh(env,eb);
 }
 
-// Auto-cancel window for the armed "press Esc again to clear" confirmation.
-#define IC_ESC_CLEAR_TIMEOUT_MS  (2000)
+// Auto-cancel window for an armed "press <key> again" confirmation.
+#define IC_CONFIRM_TIMEOUT_MS  (2000)
 
 static void edit_esc_clear_set(ic_env_t* env, bool pending) {
   if (env->esc_clear_pending == pending) return;
   env->esc_clear_pending = pending;
   if (env->esc_clear_callback != NULL) env->esc_clear_callback(pending, env->esc_clear_arg);
+}
+
+static void edit_ctrl_d_exit_set(ic_env_t* env, bool pending) {
+  if (env->ctrl_d_exit_pending == pending) return;
+  env->ctrl_d_exit_pending = pending;
+  if (env->ctrl_d_callback != NULL) env->ctrl_d_callback(pending, env->ctrl_d_arg);
 }
 
 static void edit_delete_to_end_of_line(ic_env_t* env, editor_t* eb) {
@@ -975,10 +981,10 @@ static char* edit_line( ic_env_t* env, const char* prompt_text )
   while(true) {    
     // read a character
     term_flush(env->term);
-    if (env->esc_clear_pending) {
-      // time out so the armed confirmation cancels without further input
-      if (!tty_read_timeout(env->tty, IC_ESC_CLEAR_TIMEOUT_MS, &c)) {
+    if (env->esc_clear_pending || env->ctrl_d_exit_pending) {
+      if (!tty_read_timeout(env->tty, IC_CONFIRM_TIMEOUT_MS, &c)) {
         edit_esc_clear_set(env, false);
+        edit_ctrl_d_exit_set(env, false);
         edit_refresh(env, &eb);
         continue;
       }
@@ -1016,9 +1022,12 @@ static char* edit_line( ic_env_t* env, const char* prompt_text )
     sbuf_clear(eb.hint);
     sbuf_clear(eb.hint_help);
 
-    // any key but a confirming Esc cancels a pending "press Esc again to clear"
+    // any key but the confirming one cancels a pending confirmation
     if (env->esc_clear_pending && c != KEY_ESC) {
       edit_esc_clear_set(env, false);
+    }
+    if (env->ctrl_d_exit_pending && c != KEY_CTRL_D) {
+      edit_ctrl_d_exit_set(env, false);
     }
 
     // if the user tries to move into a hint with left-cursor or end, we complete it first
@@ -1054,9 +1063,13 @@ static char* edit_line( ic_env_t* env, const char* prompt_text )
       }
     } 
     else if (c == KEY_CTRL_D) {
-      if (eb.pos == 0 && editor_pos_is_at_end(&eb)) break; // ctrl+D on empty quits with NULL
-      edit_delete_char(env,&eb);     // otherwise it is like delete
-    } 
+      // a no-op unless the line is empty, where a second press quits with NULL
+      if (eb.pos == 0 && editor_pos_is_at_end(&eb)) {
+        if (env->ctrl_d_exit_pending) break;
+        edit_ctrl_d_exit_set(env, true);
+        edit_refresh(env,&eb);
+      }
+    }
     else if (c == KEY_EVENT_STOP) {
       break; // STOP event quits with NULL
     }

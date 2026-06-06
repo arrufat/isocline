@@ -215,6 +215,12 @@ ic_public void ic_set_esc_clear_callback( ic_mode_fun_t* fun, void* arg ) {
   env->esc_clear_arg = arg;
 }
 
+ic_public void ic_set_ctrl_d_callback( ic_mode_fun_t* fun, void* arg ) {
+  ic_env_t* env = ic_get_env(); if (env==NULL) return;
+  env->ctrl_d_callback = fun;
+  env->ctrl_d_arg = arg;
+}
+
 ic_public void ic_set_resize_callback( ic_resize_fun_t* fun, void* arg ) {
   ic_env_t* env = ic_get_env(); if (env==NULL) return;
   env->resize_callback = fun;
