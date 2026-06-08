@@ -186,11 +186,6 @@ static void set_bar( ic_env_t* env, const char** bar, const char* bbcode ) {
   *bar = (bbcode != NULL && bbcode[0] != 0 ? mem_strdup(env->mem, bbcode) : NULL);
 }
 
-ic_public void ic_set_top_bar( const char* bbcode ) {
-  ic_env_t* env = ic_get_env(); if (env==NULL) return;
-  set_bar(env, &env->top_bar, bbcode);
-}
-
 ic_public void ic_set_bottom_bar( const char* bbcode ) {
   ic_env_t* env = ic_get_env(); if (env==NULL) return;
   set_bar(env, &env->bottom_bar, bbcode);
@@ -558,7 +553,6 @@ static void ic_env_free(ic_env_t* env) {
   mem_free(env->mem, env->cprompt_marker);
   mem_free(env->mem,env->prompt_marker);
   mem_free(env->mem, env->mode_prompt_marker);
-  mem_free(env->mem, env->top_bar);
   mem_free(env->mem, env->bottom_bar);
   mem_free(env->mem, env->match_braces);
   mem_free(env->mem, env->auto_braces);

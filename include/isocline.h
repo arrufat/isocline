@@ -365,10 +365,6 @@ void ic_set_esc_clear_callback( ic_mode_fun_t* fun, void* arg );
 /// timeout). Ctrl-D on a non-empty line is a no-op.
 void ic_set_ctrl_d_callback( ic_mode_fun_t* fun, void* arg );
 
-/// Set a persistent bar (bbcode markup) rendered above the input. Pass \a NULL
-/// or an empty string to remove it.
-void ic_set_top_bar( const char* bbcode );
-
 /// Set a persistent status bar (bbcode markup, may contain newlines) rendered
 /// below the input. Pass \a NULL or an empty string to remove it.
 void ic_set_bottom_bar( const char* bbcode );

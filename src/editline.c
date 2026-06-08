@@ -43,7 +43,6 @@ typedef struct editor_s {
   // caches
   attrbuf_t*    attrs;        // reuse attribute buffers
   attrbuf_t*    attrs_extra;
-  attrbuf_t*    attrs_top;
 } editor_t;
 
 
@@ -284,16 +283,6 @@ static stringbuf_t* edit_build_extra(ic_env_t* env, editor_t* eb, attrbuf_t* att
   return extra;
 }
 
-// build the buffer rendered above the input: the top bar, or NULL if unset.
-// `attrs` may be NULL.
-static stringbuf_t* edit_build_top(ic_env_t* env, editor_t* eb, attrbuf_t* attrs) {
-  if (!bar_active(env->top_bar)) return NULL;
-  stringbuf_t* top = sbuf_new(eb->mem);
-  if (top == NULL) return NULL;
-  bbcode_append(env->bbcode, env->top_bar, top, attrs);
-  return top;
-}
-
 static void edit_refresh(ic_env_t* env, editor_t* eb)
 {
   // calculate the new cursor row and total rows needed
@@ -319,18 +308,16 @@ static void edit_refresh(ic_env_t* env, editor_t* eb)
     sbuf_insert_at(eb->input, sbuf_string(eb->hint), eb->pos );
   }
 
-  // build the stacked regions: top bar, input, extra (completion menu / bottom bar)
-  stringbuf_t* top = edit_build_top(env, eb, eb->attrs_top);
+  // build the stacked regions: input, then extra (completion menu / bottom bar)
   stringbuf_t* extra = edit_build_extra(env, eb, eb->attrs_extra);
 
   // calculate rows and row/col position
   rowcol_t rc = { 0 };
   rowcol_t rc_dummy = { 0 };
-  const ssize_t rows_top   = (top == NULL ? 0 : sbuf_get_rc_at_pos( top, eb->termw, 0, 0, 0 /*pos*/, &rc_dummy ));
   const ssize_t rows_input = sbuf_get_rc_at_pos( eb->input, eb->termw, promptw, cpromptw, eb->pos, &rc );
   const ssize_t rows_extra = (extra == NULL ? 0 : sbuf_get_rc_at_pos( extra, eb->termw, 0, 0, 0 /*pos*/, &rc_dummy ));
-  const ssize_t rows = rows_top + rows_input + rows_extra;
-  const ssize_t cursor_row = rows_top + rc.row;
+  const ssize_t rows = rows_input + rows_extra;
+  const ssize_t cursor_row = rc.row;
   debug_msg("edit: refresh: rows %zd, cursor: %zd,%zd (previous rows %zd, cursor row %zd)\n", rows, rc.row, rc.col, eb->cur_rows, eb->cur_row);
 
   // only render at most terminal height rows
@@ -350,20 +337,12 @@ static void edit_refresh(ic_env_t* env, editor_t* eb)
   // back up to the first line
   term_start_of_line(env->term);
   term_up(env->term, (eb->cur_row >= termh ? termh-1 : eb->cur_row) );
-  // term_clear_lines_to_end(env->term);  // gives flicker in old Windows cmd prompt 
 
-  // render rows: top bar, then input, then extra (each stacked below the previous)
-  if (rows_top > 0) {
-    edit_refresh_rows( env, eb, top, eb->attrs_top, 0, 0, true, first_row, last_row );
-  }
-  {
-    const ssize_t first_rowi = (first_row > rows_top ? first_row - rows_top : 0);
-    const ssize_t last_rowi = last_row - rows_top; assert(last_rowi >= 0);
-    edit_refresh_rows( env, eb, eb->input, eb->attrs, promptw, cpromptw, false, first_rowi, last_rowi );
-  }
+  // render rows: input, then extra (stacked below the input)
+  edit_refresh_rows( env, eb, eb->input, eb->attrs, promptw, cpromptw, false, first_row, last_row );
   if (rows_extra > 0) {
     assert(extra != NULL);
-    const ssize_t base_x = rows_top + rows_input;
+    const ssize_t base_x = rows_input;
     const ssize_t first_rowx = (first_row > base_x ? first_row - base_x : 0);
     const ssize_t last_rowx = last_row - base_x; assert(last_rowx >= 0);
     edit_refresh_rows(env, eb, extra, eb->attrs_extra, 0, 0, true, first_rowx, last_rowx);
@@ -392,9 +371,7 @@ static void edit_refresh(ic_env_t* env, editor_t* eb)
   sbuf_delete_at(eb->extra, 0, sbuf_len(eb->hint_help));
   attrbuf_clear(eb->attrs);
   attrbuf_clear(eb->attrs_extra);
-  attrbuf_clear(eb->attrs_top);
   sbuf_free(extra);
-  sbuf_free(top);
 
   // update previous
   eb->cur_rows = rows;
@@ -434,18 +411,14 @@ static bool edit_resize(ic_env_t* env, editor_t* eb ) {
   ssize_t newtermw = term_get_width(env->term);
   if (eb->termw == newtermw) return false;
 
-  // measure the cursor row in the old frame reflowed to the new width
+  // measure the cursor row in the old input reflowed to the new width
   ssize_t promptw, cpromptw;
   edit_get_prompt_width( env, eb, false, &promptw, &cpromptw );
   sbuf_insert_at(eb->input, sbuf_string(eb->hint), eb->pos); // insert used hint
-  stringbuf_t* top = edit_build_top(env, eb, NULL);
   rowcol_t rc = { 0 };
-  rowcol_t rc_dummy = { 0 };
-  const ssize_t rows_top = (top == NULL ? 0 : sbuf_get_wrapped_rc_at_pos( top, eb->termw, newtermw, 0, 0, 0 /*pos*/, &rc_dummy ));
   sbuf_get_wrapped_rc_at_pos( eb->input, eb->termw, newtermw, promptw, cpromptw, eb->pos, &rc );
-  const ssize_t cursor_row = rows_top + rc.row;
+  const ssize_t cursor_row = rc.row;
   sbuf_delete_at(eb->input, eb->pos, sbuf_len(eb->hint)); // remove hint again
-  sbuf_free(top);
   debug_msg("edit: resize: cursor row: %zd (previous rows: %zd, cursor row %zd)\n", cursor_row, eb->cur_rows, eb->cur_row);
 
   // The terminal answers ESC[6n only after applying the pending resize, so this
@@ -460,8 +433,8 @@ static bool edit_resize(ic_env_t* env, editor_t* eb ) {
   }
 
   // re-anchor to the top of the old frame, erase it, then repaint at the new width;
-  // repainting in place would leave the old rewrapped bars stacked above the input.
-  // erase and repaint are buffered together so they land as a single frame.
+  // repainting in place would leave the old rewrapped rows behind. erase and
+  // repaint are buffered together so they land as a single frame.
   buffer_mode_t bmode = term_set_buffer_mode(env->term, BUFFERED);
   term_start_of_line(env->term);
   term_up(env->term, up);
@@ -962,14 +935,13 @@ static char* edit_line( ic_env_t* env, const char* prompt_text )
   if (!(env->no_highlight && env->no_bracematch)) {
     eb.attrs = attrbuf_new(env->mem);
     eb.attrs_extra = attrbuf_new(env->mem);
-    eb.attrs_top = attrbuf_new(env->mem);
   }
 
   // show prompt
   edit_write_prompt(env, &eb, 0, false);
 
-  // draw the bars immediately
-  if (bar_active(env->top_bar) || bar_active(env->bottom_bar)) {
+  // draw the bottom bar immediately
+  if (bar_active(env->bottom_bar)) {
     edit_refresh(env, &eb);
   }
 
@@ -1265,17 +1237,14 @@ static char* edit_line( ic_env_t* env, const char* prompt_text )
   // goto end
   eb.pos = sbuf_len(eb.input);
 
-  // refresh once more without brace matching or the bars
+  // refresh once more without brace matching or the bottom bar
   bool bm = env->no_bracematch;
   const char* bb = env->bottom_bar;
-  const char* tb = env->top_bar;
   env->no_bracematch = true;
   env->bottom_bar = NULL;
-  env->top_bar = NULL;
   edit_refresh(env,&eb);
   env->no_bracematch = bm;
   env->bottom_bar = bb;
-  env->top_bar = tb;
   
   // save result
   char* res; 
@@ -1299,7 +1268,6 @@ static char* edit_line( ic_env_t* env, const char* prompt_text )
   editstate_done(env->mem, &eb.redo);
   attrbuf_free(eb.attrs);
   attrbuf_free(eb.attrs_extra);
-  attrbuf_free(eb.attrs_top);
   sbuf_free(eb.input);
   sbuf_free(eb.extra);
   sbuf_free(eb.hint);

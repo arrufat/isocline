@@ -199,16 +199,6 @@ ic_private void term_set_attr( term_t* term, attr_t attr ) {
 }
 
 
-/*
-ic_private void term_clear_lines_to_end(term_t* term) {
-  term_write(term, "\r" IC_CSI "J");
-}
-
-ic_private void term_show_cursor(term_t* term, bool on) {
-  term_write(term, on ? IC_CSI "?25h" : IC_CSI "?25l");
-}
-*/
-
 //-------------------------------------------------------------
 // Formatted output
 //-------------------------------------------------------------
@@ -304,9 +294,7 @@ ic_private void term_write_n(term_t* term, const char* s, ssize_t n) {
 
 ic_private void term_flush(term_t* term) {
   if (sbuf_len(term->buf) > 0) {
-    //term_show_cursor(term,false);
     term_write_direct(term, sbuf_string(term->buf), sbuf_len(term->buf));
-    //term_show_cursor(term,true);
     sbuf_clear(term->buf);
   }
 }
