@@ -438,30 +438,6 @@ ic_private bool tty_term_resize_event(tty_t* tty) {
   return true;  // always return true on systems without a resize event (more expensive but still ok)
 }
 
-// Wait up to `timeout_ms` for another resize event, watching only the resize
-// self-pipe so pending keyboard input is left untouched. Returns true if another
-// resize arrived (keep coalescing) or false once the size has settled (timed out).
-ic_private bool tty_await_resize_settle(tty_t* tty, long timeout_ms) {
-  if (tty == NULL || !tty->has_term_resize_event || sig_resize_pipe[0] < 0) return false;
-  fd_set readset;
-  FD_ZERO(&readset);
-  FD_SET(sig_resize_pipe[0], &readset);
-  struct timeval time;
-  time.tv_sec  = timeout_ms / 1000;
-  time.tv_usec = 1000 * (timeout_ms % 1000);
-  int n = select(sig_resize_pipe[0] + 1, &readset, NULL, NULL, &time);
-  if (n < 0) {
-    return (errno == EINTR);  // interrupted, likely by another SIGWINCH: keep coalescing
-  }
-  if (n > 0 && FD_ISSET(sig_resize_pipe[0], &readset)) {
-    uint8_t drain[64];
-    while (read(sig_resize_pipe[0], drain, sizeof(drain)) > 0) { /* empty the pipe */ }
-    tty->term_resize_event = false;  // consume; edit_resize reads the final size
-    return true;
-  }
-  return false;  // timed out: the size has settled
-}
-
 ic_private void tty_set_esc_delay(tty_t* tty, long initial_delay_ms, long followup_delay_ms) {
   tty->esc_initial_timeout = (initial_delay_ms < 0 ? 0 : (initial_delay_ms > 1000 ? 1000 : initial_delay_ms));
   tty->esc_timeout = (followup_delay_ms < 0 ? 0 : (followup_delay_ms > 1000 ? 1000 : followup_delay_ms));

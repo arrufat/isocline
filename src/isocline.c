@@ -180,17 +180,6 @@ ic_public void ic_set_prompt_marker( const char* prompt_marker, const char* cpro
   set_prompt_marker(env, prompt_marker, cprompt_marker);
 }
 
-// replace an owned bar string, normalizing NULL/empty to NULL
-static void set_bar( ic_env_t* env, const char** bar, const char* bbcode ) {
-  mem_free(env->mem, *bar);
-  *bar = (bbcode != NULL && bbcode[0] != 0 ? mem_strdup(env->mem, bbcode) : NULL);
-}
-
-ic_public void ic_set_bottom_bar( const char* bbcode ) {
-  ic_env_t* env = ic_get_env(); if (env==NULL) return;
-  set_bar(env, &env->bottom_bar, bbcode);
-}
-
 ic_public void ic_set_prompt_mode( const char* mode_marker, char trigger ) {
   ic_env_t* env = ic_get_env(); if (env==NULL) return;
   mem_free(env->mem, env->mode_prompt_marker);
@@ -204,22 +193,16 @@ ic_public void ic_set_mode_callback( ic_mode_fun_t* fun, void* arg ) {
   env->mode_arg = arg;
 }
 
-ic_public void ic_set_esc_clear_callback( ic_mode_fun_t* fun, void* arg ) {
+ic_public void ic_set_esc_clear_hint( const char* hint ) {
   ic_env_t* env = ic_get_env(); if (env==NULL) return;
-  env->esc_clear_callback = fun;
-  env->esc_clear_arg = arg;
+  mem_free(env->mem, env->esc_clear_hint);
+  env->esc_clear_hint = (hint != NULL && hint[0] != 0 ? mem_strdup(env->mem, hint) : NULL);
 }
 
-ic_public void ic_set_ctrl_d_callback( ic_mode_fun_t* fun, void* arg ) {
+ic_public void ic_set_ctrl_d_hint( const char* hint ) {
   ic_env_t* env = ic_get_env(); if (env==NULL) return;
-  env->ctrl_d_callback = fun;
-  env->ctrl_d_arg = arg;
-}
-
-ic_public void ic_set_resize_callback( ic_resize_fun_t* fun, void* arg ) {
-  ic_env_t* env = ic_get_env(); if (env==NULL) return;
-  env->resize_callback = fun;
-  env->resize_arg = arg;
+  mem_free(env->mem, env->ctrl_d_hint);
+  env->ctrl_d_hint = (hint != NULL && hint[0] != 0 ? mem_strdup(env->mem, hint) : NULL);
 }
 
 ic_public bool ic_get_mode_active(void) {
@@ -553,7 +536,8 @@ static void ic_env_free(ic_env_t* env) {
   mem_free(env->mem, env->cprompt_marker);
   mem_free(env->mem,env->prompt_marker);
   mem_free(env->mem, env->mode_prompt_marker);
-  mem_free(env->mem, env->bottom_bar);
+  mem_free(env->mem, env->esc_clear_hint);
+  mem_free(env->mem, env->ctrl_d_hint);
   mem_free(env->mem, env->match_braces);
   mem_free(env->mem, env->auto_braces);
   env->prompt_marker = NULL;

@@ -106,11 +106,6 @@ ic_private void term_clear_to_end_of_line(term_t* term) {
   term_write(term, IC_CSI "K");
 }
 
-// erase from the cursor to the end of the display, leaving the cursor in place
-ic_private void term_clear_to_end_of_screen(term_t* term) {
-  term_write(term, IC_CSI "J");
-}
-
 ic_private void term_start_of_line(term_t* term) {
   term_write( term, "\r" );
 }
@@ -893,16 +888,6 @@ static bool term_get_cursor_pos( term_t* term, ssize_t* row, ssize_t* col)
   return true;
 }
 
-// term_esc_query would call tty_end_raw and drop the editor out of raw mode
-// mid-edit, so query directly while raw mode stays on.
-ic_private bool term_get_cursor_pos_raw( term_t* term, ssize_t* row, ssize_t* col )
-{
-  char buf[128];
-  if (!term_esc_query_raw(term,"\x1B[6n",buf,128)) return false;
-  if (!ic_atoz2(buf,row,col)) return false;
-  return true;
-}
-
 static void term_set_cursor_pos( term_t* term, ssize_t row, ssize_t col ) {
   term_writef( term, IC_CSI "%zd;%zdH", row, col );
 }
@@ -965,11 +950,6 @@ ic_private bool term_update_dim(term_t* term) {
   term->height = rows;
   debug_msg("term: update dim: %zd, %zd\n", term->height, term->width );
   return changed;
-}
-
-ic_private bool term_get_cursor_pos_raw( term_t* term, ssize_t* row, ssize_t* col ) {
-  ic_unused(term); ic_unused(row); ic_unused(col);
-  return false;
 }
 
 #endif

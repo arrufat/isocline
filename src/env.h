@@ -37,14 +37,9 @@ struct ic_env_s {
   ic_mode_fun_t*  mode_callback;    // notified when the mode is entered/exited (may be NULL)
   void*           mode_arg;         // user state for the mode callback
   bool            esc_clear_pending; // a first Esc on a non-empty line armed "press Esc again to clear"
-  ic_mode_fun_t*  esc_clear_callback; // notified when the esc-clear confirmation is armed/disarmed (may be NULL)
-  void*           esc_clear_arg;    // user state for the esc-clear callback
+  const char*     esc_clear_hint;   // faint inline hint shown while esc-clear is armed (NULL disables)
   bool            ctrl_d_exit_pending; // a first Ctrl-D on an empty line armed "press Ctrl-D again to exit"
-  ic_mode_fun_t*  ctrl_d_callback;  // notified when the ctrl-d exit confirmation is armed/disarmed (may be NULL)
-  void*           ctrl_d_arg;       // user state for the ctrl-d callback
-  const char*     bottom_bar;       // persistent status bar rendered below the input (NULL disables)
-  ic_resize_fun_t* resize_callback; // notified on terminal resize (may be NULL)
-  void*           resize_arg;       // user state for the resize callback
+  const char*     ctrl_d_hint;      // faint inline hint shown while ctrl-d-exit is armed (NULL disables)
   ic_highlight_fun_t* highlighter;  // highlight callback
   void*           highlighter_arg;  // user state for the highlighter.
   ic_hint_fun_t*  hinter;           // hint callback

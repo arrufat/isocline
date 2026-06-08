@@ -261,25 +261,16 @@ static void edit_refresh_rows(ic_env_t* env, editor_t* eb, stringbuf_t* input, a
 }
 
 
-// is a persistent bar set and non-empty?
-static inline bool bar_active(const char* bar) {
-  return (bar != NULL && bar[0] != 0);
-}
-
-// build the buffer rendered below the input: completion menu (+ hint help) and/or
-// the bottom bar. Returns NULL when there is nothing to show. `attrs` may be NULL.
+// build the buffer rendered below the input: the completion menu (+ hint help).
+// Returns NULL when there is nothing to show. `attrs` may be NULL.
 static stringbuf_t* edit_build_extra(ic_env_t* env, editor_t* eb, attrbuf_t* attrs) {
-  if (sbuf_len(eb->extra) == 0 && !bar_active(env->bottom_bar)) return NULL;
+  if (sbuf_len(eb->extra) == 0) return NULL;
   stringbuf_t* extra = sbuf_new(eb->mem);
   if (extra == NULL) return NULL;
   if (sbuf_len(eb->hint_help) > 0) {
     bbcode_append(env->bbcode, sbuf_string(eb->hint_help), extra, attrs);
   }
   bbcode_append(env->bbcode, sbuf_string(eb->extra), extra, attrs);
-  if (bar_active(env->bottom_bar)) {
-    if (sbuf_len(extra) > 0) { bbcode_append(env->bbcode, "\n", extra, attrs); }
-    bbcode_append(env->bbcode, env->bottom_bar, extra, attrs);
-  }
   return extra;
 }
 
@@ -300,7 +291,7 @@ static void edit_refresh(ic_env_t* env, editor_t* eb)
                               bbcode_style(env->bbcode,"ic-bracematch"), bbcode_style(env->bbcode,"ic-error"));
   }
 
-  // insert hint  
+  // insert hint
   if (sbuf_len(eb->hint) > 0) {
     if (eb->attrs != NULL) {
       attrbuf_insert_at( eb->attrs, eb->pos, sbuf_len(eb->hint), bbcode_style(env->bbcode, "ic-hint") );
@@ -308,7 +299,21 @@ static void edit_refresh(ic_env_t* env, editor_t* eb)
     sbuf_insert_at(eb->input, sbuf_string(eb->hint), eb->pos );
   }
 
-  // build the stacked regions: input, then extra (completion menu / bottom bar)
+  // append the confirmation hint (faint) at the end of the input while armed
+  const char* confirm = (env->ctrl_d_exit_pending ? env->ctrl_d_hint
+                       : env->esc_clear_pending   ? env->esc_clear_hint : NULL);
+  ssize_t confirm_at = -1;
+  ssize_t confirm_len = 0;
+  if (confirm != NULL && confirm[0] != 0) {
+    confirm_at = sbuf_len(eb->input);
+    confirm_len = ic_strlen(confirm);
+    if (eb->attrs != NULL) {
+      attrbuf_insert_at( eb->attrs, confirm_at, confirm_len, bbcode_style(env->bbcode, "ic-hint") );
+    }
+    sbuf_insert_at(eb->input, confirm, confirm_at);
+  }
+
+  // build the stacked regions: input, then extra (completion menu)
   stringbuf_t* extra = edit_build_extra(env, eb, eb->attrs_extra);
 
   // calculate rows and row/col position
@@ -348,11 +353,16 @@ static void edit_refresh(ic_env_t* env, editor_t* eb)
     edit_refresh_rows(env, eb, extra, eb->attrs_extra, 0, 0, true, first_rowx, last_rowx);
   }
     
-  // erase rows left over from a taller previous frame (ESC[J, no cursor move and
-  // no scrolling, unlike trailing newlines)
-  const ssize_t rrows = last_row - first_row + 1;  // rendered rows
+  // overwrite trailing rows we do not use anymore
+  ssize_t rrows = last_row - first_row + 1;  // rendered rows
   if (rrows < termh && rows < eb->cur_rows) {
-    term_clear_to_end_of_screen(env->term);
+    ssize_t clear = eb->cur_rows - rows;
+    while (rrows < termh && clear > 0) {
+      clear--;
+      rrows++;
+      term_writeln(env->term,"");
+      term_clear_line(env->term);
+    }
   }
 
   // move cursor back to edit position
@@ -366,7 +376,8 @@ static void edit_refresh(ic_env_t* env, editor_t* eb)
   // stop buffering
   term_set_buffer_mode(env->term, bmode);
 
-  // restore input by removing the hint
+  // restore input by removing the confirmation hint, then the hint
+  if (confirm_at >= 0) sbuf_delete_at(eb->input, confirm_at, confirm_len);
   sbuf_delete_at(eb->input, eb->pos, sbuf_len(eb->hint));
   sbuf_delete_at(eb->extra, 0, sbuf_len(eb->hint_help));
   attrbuf_clear(eb->attrs);
@@ -411,41 +422,32 @@ static bool edit_resize(ic_env_t* env, editor_t* eb ) {
   ssize_t newtermw = term_get_width(env->term);
   if (eb->termw == newtermw) return false;
 
-  // measure the cursor row in the old input reflowed to the new width
+  // recalculate the row layout assuming the hardwrapping for the new terminal width
   ssize_t promptw, cpromptw;
   edit_get_prompt_width( env, eb, false, &promptw, &cpromptw );
   sbuf_insert_at(eb->input, sbuf_string(eb->hint), eb->pos); // insert used hint
+
+  // build the extra region (completion menu / bottom bar) and measure each against
+  // the new width (no attrs needed)
+  stringbuf_t* extra = edit_build_extra(env, eb, NULL);
   rowcol_t rc = { 0 };
-  sbuf_get_wrapped_rc_at_pos( eb->input, eb->termw, newtermw, promptw, cpromptw, eb->pos, &rc );
-  const ssize_t cursor_row = rc.row;
-  sbuf_delete_at(eb->input, eb->pos, sbuf_len(eb->hint)); // remove hint again
-  debug_msg("edit: resize: cursor row: %zd (previous rows: %zd, cursor row %zd)\n", cursor_row, eb->cur_rows, eb->cur_row);
+  rowcol_t rc_dummy = { 0 };
+  const ssize_t rows_input = sbuf_get_wrapped_rc_at_pos( eb->input, eb->termw, newtermw, promptw, cpromptw, eb->pos, &rc );
+  const ssize_t rows_extra = (extra == NULL ? 0 : sbuf_get_wrapped_rc_at_pos( extra, eb->termw, newtermw, 0, 0, 0 /*pos*/, &rc_dummy ));
+  ssize_t rows = rows_input + rows_extra;
+  debug_msg("edit: resize: new rows: %zd, cursor row: %zd (previous: rows: %zd, cursor row %zd)\n", rows, rc.row, eb->cur_rows, eb->cur_row);
 
-  // The terminal answers ESC[6n only after applying the pending resize, so this
-  // query is a barrier that lets the reflow settle before we repaint; without it
-  // the repaint races an in-flight reflow (macOS leaves the frame stacked). The
-  // reported row also clamps the step so we never anchor above the viewport.
-  const ssize_t termh = term_get_height(env->term);
-  ssize_t up = (cursor_row >= termh ? termh - 1 : cursor_row);
-  ssize_t r_cur = 0, c_cur = 0;
-  if (term_get_cursor_pos_raw(env->term, &r_cur, &c_cur) && up > r_cur - 1) {
-    up = r_cur - 1;
+  // update the newly calculated row and rows
+  eb->cur_row = rc.row;
+  if (rows > eb->cur_rows) {
+    eb->cur_rows = rows;
   }
+  eb->termw = newtermw;
+  edit_refresh(env,eb);
 
-  // re-anchor to the top of the old frame, erase it, then repaint at the new width;
-  // repainting in place would leave the old rewrapped rows behind. erase and
-  // repaint are buffered together so they land as a single frame.
-  buffer_mode_t bmode = term_set_buffer_mode(env->term, BUFFERED);
-  term_start_of_line(env->term);
-  term_up(env->term, up);
-  term_clear_to_end_of_screen(env->term);
-  eb->cur_row  = 0;
-  eb->cur_rows = 0;
-  eb->termw    = newtermw;
-
-  if (env->resize_callback != NULL) { env->resize_callback(env->resize_arg); }
-  edit_refresh(env,eb); // flushes the buffered erase together with the repaint
-  term_set_buffer_mode(env->term, bmode);
+  // remove hint again
+  sbuf_delete_at(eb->input, eb->pos, sbuf_len(eb->hint));
+  sbuf_free(extra);
   return true;
 }
 
@@ -666,15 +668,11 @@ static void edit_delete_all(ic_env_t* env, editor_t* eb) {
 #define IC_CONFIRM_TIMEOUT_MS  (2000)
 
 static void edit_esc_clear_set(ic_env_t* env, bool pending) {
-  if (env->esc_clear_pending == pending) return;
   env->esc_clear_pending = pending;
-  if (env->esc_clear_callback != NULL) env->esc_clear_callback(pending, env->esc_clear_arg);
 }
 
 static void edit_ctrl_d_exit_set(ic_env_t* env, bool pending) {
-  if (env->ctrl_d_exit_pending == pending) return;
   env->ctrl_d_exit_pending = pending;
-  if (env->ctrl_d_callback != NULL) env->ctrl_d_callback(pending, env->ctrl_d_arg);
 }
 
 static void edit_delete_to_end_of_line(ic_env_t* env, editor_t* eb) {
@@ -940,11 +938,6 @@ static char* edit_line( ic_env_t* env, const char* prompt_text )
   // show prompt
   edit_write_prompt(env, &eb, 0, false);
 
-  // draw the bottom bar immediately
-  if (bar_active(env->bottom_bar)) {
-    edit_refresh(env, &eb);
-  }
-
   // always a history entry for the current input
   history_push(env->history, "");
 
@@ -988,8 +981,6 @@ static char* edit_line( ic_env_t* env, const char* prompt_text )
 
     // update terminal in case of a resize
     if (tty_term_resize_event(env->tty)) {
-      // debounce the burst of resize events from a window drag: repaint once settled
-      while (tty_await_resize_settle(env->tty, 50)) { /* coalesce the burst */ }
       edit_resize(env,&eb);
     }
 
@@ -1237,14 +1228,11 @@ static char* edit_line( ic_env_t* env, const char* prompt_text )
   // goto end
   eb.pos = sbuf_len(eb.input);
 
-  // refresh once more without brace matching or the bottom bar
+  // refresh once more without brace matching
   bool bm = env->no_bracematch;
-  const char* bb = env->bottom_bar;
   env->no_bracematch = true;
-  env->bottom_bar = NULL;
   edit_refresh(env,&eb);
   env->no_bracematch = bm;
-  env->bottom_bar = bb;
   
   // save result
   char* res; 

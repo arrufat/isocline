@@ -46,9 +46,6 @@ ic_private void term_beep(term_t* term);
 
 ic_private bool term_update_dim(term_t* term);
 
-// Cursor position query that keeps raw mode on; false if the terminal doesn't answer.
-ic_private bool term_get_cursor_pos_raw(term_t* term, ssize_t* row, ssize_t* col);
-
 ic_private ssize_t term_get_width(term_t* term);
 ic_private ssize_t term_get_height(term_t* term);
 ic_private int  term_get_color_bits(term_t* term);
@@ -64,7 +61,6 @@ ic_private void term_down(term_t* term, ssize_t n);
 ic_private void term_start_of_line(term_t* term );
 ic_private void term_clear_line(term_t* term);
 ic_private void term_clear_to_end_of_line(term_t* term);
-ic_private void term_clear_to_end_of_screen(term_t* term);
 
 
 ic_private void term_attr_reset(term_t* term);

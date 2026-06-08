@@ -353,25 +353,15 @@ void ic_set_mode_callback( ic_mode_fun_t* fun, void* arg );
 /// Get whether the prompt mode is currently active.
 bool ic_get_mode_active(void);
 
-/// Set the callback invoked when a first Escape on a non-empty line arms the
-/// "press Escape again to clear" confirmation (\a active true), or when it is
-/// disarmed (a second Escape, any other key, or a timeout). Mirrors the mode
-/// callback so a host can surface a hint while the confirmation is pending.
-void ic_set_esc_clear_callback( ic_mode_fun_t* fun, void* arg );
+/// Set the faint inline hint shown after the input while the "press Escape again
+/// to clear" confirmation is armed (a first Escape on a non-empty line). Pass \a
+/// NULL or an empty string to show nothing.
+void ic_set_esc_clear_hint( const char* hint );
 
-/// Set the callback invoked when a first Ctrl-D on an empty line arms the
-/// "press Ctrl-D again to exit" confirmation (\a active true), or when it is
-/// disarmed (a second Ctrl-D quits before disarming, any other key, or a
-/// timeout). Ctrl-D on a non-empty line is a no-op.
-void ic_set_ctrl_d_callback( ic_mode_fun_t* fun, void* arg );
-
-/// Set a persistent status bar (bbcode markup, may contain newlines) rendered
-/// below the input. Pass \a NULL or an empty string to remove it.
-void ic_set_bottom_bar( const char* bbcode );
-
-/// Callback invoked on terminal resize, before re-render, to refit the bars.
-typedef void (ic_resize_fun_t)(void* arg);
-void ic_set_resize_callback( ic_resize_fun_t* fun, void* arg );
+/// Set the faint inline hint shown after the input while the "press Ctrl-D again
+/// to exit" confirmation is armed (a first Ctrl-D on an empty line). Pass \a NULL
+/// or an empty string to show nothing.
+void ic_set_ctrl_d_hint( const char* hint );
 
 /// Disable or enable multi-line input (enabled by default).
 /// Returns the previous setting.
