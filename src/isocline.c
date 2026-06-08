@@ -193,6 +193,12 @@ ic_public void ic_set_mode_callback( ic_mode_fun_t* fun, void* arg ) {
   env->mode_arg = arg;
 }
 
+ic_public void ic_set_mode_hint( const char* hint ) {
+  ic_env_t* env = ic_get_env(); if (env==NULL) return;
+  mem_free(env->mem, env->mode_hint);
+  env->mode_hint = (hint != NULL && hint[0] != 0 ? mem_strdup(env->mem, hint) : NULL);
+}
+
 ic_public void ic_set_esc_clear_hint( const char* hint ) {
   ic_env_t* env = ic_get_env(); if (env==NULL) return;
   mem_free(env->mem, env->esc_clear_hint);
@@ -536,6 +542,7 @@ static void ic_env_free(ic_env_t* env) {
   mem_free(env->mem, env->cprompt_marker);
   mem_free(env->mem,env->prompt_marker);
   mem_free(env->mem, env->mode_prompt_marker);
+  mem_free(env->mem, env->mode_hint);
   mem_free(env->mem, env->esc_clear_hint);
   mem_free(env->mem, env->ctrl_d_hint);
   mem_free(env->mem, env->match_braces);

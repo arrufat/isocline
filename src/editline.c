@@ -291,6 +291,8 @@ static void edit_refresh(ic_env_t* env, editor_t* eb)
                               bbcode_style(env->bbcode,"ic-bracematch"), bbcode_style(env->bbcode,"ic-error"));
   }
 
+  const bool input_empty = (sbuf_len(eb->input) == 0);
+
   // insert hint
   if (sbuf_len(eb->hint) > 0) {
     if (eb->attrs != NULL) {
@@ -299,9 +301,11 @@ static void edit_refresh(ic_env_t* env, editor_t* eb)
     sbuf_insert_at(eb->input, sbuf_string(eb->hint), eb->pos );
   }
 
-  // append the confirmation hint (faint) at the end of the input while armed
+  // append a faint hint at the end of the input: a confirmation while armed, or
+  // the mode-exit hint while the prompt mode is active on an empty line
   const char* confirm = (env->ctrl_d_exit_pending ? env->ctrl_d_hint
-                       : env->esc_clear_pending   ? env->esc_clear_hint : NULL);
+                       : env->esc_clear_pending   ? env->esc_clear_hint
+                       : (env->mode_active && input_empty) ? env->mode_hint : NULL);
   ssize_t confirm_at = -1;
   ssize_t confirm_len = 0;
   if (confirm != NULL && confirm[0] != 0) {

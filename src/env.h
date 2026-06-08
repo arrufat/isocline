@@ -36,6 +36,7 @@ struct ic_env_s {
   bool            mode_active;      // is the prompt mode active? (persists across ic_readline calls)
   ic_mode_fun_t*  mode_callback;    // notified when the mode is entered/exited (may be NULL)
   void*           mode_arg;         // user state for the mode callback
+  const char*     mode_hint;        // faint inline hint shown while the mode is active on an empty line (NULL disables)
   bool            esc_clear_pending; // a first Esc on a non-empty line armed "press Esc again to clear"
   const char*     esc_clear_hint;   // faint inline hint shown while esc-clear is armed (NULL disables)
   bool            ctrl_d_exit_pending; // a first Ctrl-D on an empty line armed "press Ctrl-D again to exit"

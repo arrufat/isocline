@@ -350,6 +350,11 @@ void ic_set_prompt_mode( const char* mode_marker, char trigger );
 /// Set the callback invoked whenever the prompt mode is entered or exited.
 void ic_set_mode_callback( ic_mode_fun_t* fun, void* arg );
 
+/// Set the faint inline hint shown after the input while the prompt mode is
+/// active on an empty line (e.g. "esc to exit"). Pass \a NULL or an empty string
+/// to show nothing.
+void ic_set_mode_hint( const char* hint );
+
 /// Get whether the prompt mode is currently active.
 bool ic_get_mode_active(void);
 
