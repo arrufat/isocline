@@ -46,6 +46,9 @@ struct tty_s {
   ssize_t   cpush_count;
   long      esc_initial_timeout;    // initial ms wait to see if ESC starts an escape sequence
   long      esc_timeout;            // follow up delay for characters in an escape sequence
+  ic_idle_fun_t* idle_fun;          // called while a blocking read waits for input
+  void*     idle_arg;
+  long      idle_delay;             // ms to wait for input before (re)invoking idle_fun
   #if defined(_WIN32)
   HANDLE    hcon;                   // console input handle
   DWORD     hcon_orig_mode;         // original console mode
@@ -66,6 +69,11 @@ static int sig_resize_pipe[2] = { -1, -1 };
 //-------------------------------------------------------------
 
 ic_private bool tty_readc_noblock(tty_t* tty, uint8_t* c, long timeout_ms);  // does not modify `c` when no input (false is returned)
+static bool tty_wait_for_input(tty_t* tty, long timeout_ms);                 // false only on timeout
+
+static long clamp_delay_ms(long ms) {
+  return (ms < 0 ? 0 : (ms > 1000 ? 1000 : ms));
+}
 
 //-------------------------------------------------------------
 // Key code helpers
@@ -229,6 +237,13 @@ static code_t modify_code( code_t code ) {
 // read a single char/key
 ic_private code_t tty_read(tty_t* tty)
 {
+  if (tty->idle_fun != NULL) {
+    // invoke the idle callback between input-wait slices; the read itself
+    // stays on the blocking path so EOF, escapes, and resizes are unaffected
+    while (!tty_wait_for_input(tty, tty->idle_delay)) {
+      tty->idle_delay = clamp_delay_ms(tty->idle_fun(tty->idle_arg));
+    }
+  }
   code_t code;
   if (!tty_read_timeout(tty, -1, &code)) return KEY_NONE;
   return code;
@@ -439,8 +454,14 @@ ic_private bool tty_term_resize_event(tty_t* tty) {
 }
 
 ic_private void tty_set_esc_delay(tty_t* tty, long initial_delay_ms, long followup_delay_ms) {
-  tty->esc_initial_timeout = (initial_delay_ms < 0 ? 0 : (initial_delay_ms > 1000 ? 1000 : initial_delay_ms));
-  tty->esc_timeout = (followup_delay_ms < 0 ? 0 : (followup_delay_ms > 1000 ? 1000 : followup_delay_ms));
+  tty->esc_initial_timeout = clamp_delay_ms(initial_delay_ms);
+  tty->esc_timeout = clamp_delay_ms(followup_delay_ms);
+}
+
+ic_private void tty_set_idle_callback(tty_t* tty, ic_idle_fun_t* idle, void* arg) {
+  tty->idle_fun = idle;
+  tty->idle_arg = arg;
+  tty->idle_delay = 1;  // ask the callback for the real cadence on the first wait
 }
 
 ic_private bool tty_is_atty(int fd) {
@@ -462,6 +483,33 @@ static bool tty_readc_blocking(tty_t* tty, uint8_t* c) {
   return (nread == 1);
 }
 
+// add the input fd and the resize self-pipe to `readset`; returns the max fd
+static int tty_select_fdset(tty_t* tty, fd_set* readset) {
+  FD_ZERO(readset);
+  FD_SET(tty->fd_in, readset);
+  int maxfd = tty->fd_in;
+  if (sig_resize_pipe[0] >= 0) {
+    FD_SET(sig_resize_pipe[0], readset);
+    if (sig_resize_pipe[0] > maxfd) { maxfd = sig_resize_pipe[0]; }
+  }
+  return maxfd;
+}
+
+// wait until input, a resize, or the timeout; false only on timeout so the
+// idle loop in tty_read never swallows EOF (a readable fd at EOF returns
+// true and lets the blocking read report it).
+static bool tty_wait_for_input(tty_t* tty, long timeout_ms) {
+  if (tty->push_count > 0 || tty->cpush_count > 0 || tty->term_resize_event) return true;
+  fd_set readset;
+  struct timeval time;
+  const int maxfd = tty_select_fdset(tty, &readset);
+  time.tv_sec  = (timeout_ms > 0 ? timeout_ms / 1000 : 0);
+  time.tv_usec = (timeout_ms > 0 ? 1000*(timeout_ms % 1000) : 0);
+  const int res = select(maxfd + 1, &readset, NULL, NULL, &time);
+  if (res < 0) { return (errno != EINTR); }  // EINTR as timeout: re-check the resize flag and idle again
+  return (res > 0);
+}
+
 
 // non blocking read -- with a small timeout used for reading escape sequences.
 ic_private bool tty_readc_noblock(tty_t* tty, uint8_t* c, long timeout_ms)
@@ -474,13 +522,7 @@ ic_private bool tty_readc_noblock(tty_t* tty, uint8_t* c, long timeout_ms)
     // wait for input or a resize (self-pipe), no timeout
     while (true) {
       fd_set readset;
-      FD_ZERO(&readset);
-      FD_SET(tty->fd_in, &readset);
-      int maxfd = tty->fd_in;
-      if (sig_resize_pipe[0] >= 0) {
-        FD_SET(sig_resize_pipe[0], &readset);
-        if (sig_resize_pipe[0] > maxfd) maxfd = sig_resize_pipe[0];
-      }
+      const int maxfd = tty_select_fdset(tty, &readset);
       if (select(maxfd + 1, &readset, NULL, NULL, NULL) < 0) {
         if (errno == EINTR) { if (tty->term_resize_event) return false; else continue; }
         return false;
@@ -742,6 +784,11 @@ static void tty_done_raw(tty_t* tty) {
 //-------------------------------------------------------------
 
 static void tty_waitc_console(tty_t* tty, long timeout_ms);
+
+static bool tty_wait_for_input(tty_t* tty, long timeout_ms) {
+  ic_unused(tty); ic_unused(timeout_ms);
+  return true;  // not implemented; the idle callback never fires on Windows
+}
 
 ic_private bool tty_readc_noblock(tty_t* tty, uint8_t* c, long timeout_ms) {  // don't modify `c` if there is no input
   // in our pushback buffer?

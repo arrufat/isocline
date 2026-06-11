@@ -632,6 +632,18 @@ int ic_term_get_color_bits( void );
 /// functional on Linux, macOS and Windows).
 bool ic_async_stop(void);
 
+/// Idle callback while a readline waits for input; see \a ic_set_idle_callback.
+/// Returns the delay in milliseconds before it is invoked again
+/// (clamped between 0 and 1000).
+typedef long (ic_idle_fun_t)(void* arg);
+
+/// Set a callback that is invoked from the readline's own thread whenever it
+/// has been waiting for input for the delay the callback last returned
+/// (initially 1ms), so the application can run background work between
+/// keystrokes. Pass NULL to remove the callback. (Unix only; never fires on
+/// Windows.)
+void ic_set_idle_callback(ic_idle_fun_t* idle, void* arg);
+
 /// \}
 
 //--------------------------------------------------------------

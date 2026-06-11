@@ -156,6 +156,12 @@ ic_public bool ic_async_stop(void) {
   return tty_async_stop(env->tty);
 }
 
+ic_public void ic_set_idle_callback(ic_idle_fun_t* idle, void* arg) {
+  ic_env_t* env = ic_get_env(); if (env==NULL) return;
+  if (env->tty==NULL) return;
+  tty_set_idle_callback(env->tty, idle, arg);
+}
+
 static void set_prompt_marker(ic_env_t* env, const char* prompt_marker, const char* cprompt_marker) {
   if (prompt_marker == NULL) prompt_marker = "> ";
   if (cprompt_marker == NULL) cprompt_marker = prompt_marker;
