@@ -346,9 +346,7 @@ static ssize_t str_for_each_row( const char* s, ssize_t len, ssize_t termw, ssiz
       break;
     }
     startw = (rcount == 0 ? promptw : cpromptw);
-    // prompt-less rows (bars, menus) hold no cursor: reserve no column, fill full width
-    const bool bare = (promptw == 0 && cpromptw == 0);
-    ssize_t termcol = rcol + w + startw + (bare ? -1 : 1 /* reserve a column for the cursor */);
+    ssize_t termcol = rcol + w + startw + 1 /* for the cursor */;
     if (termw != 0 && i != 0 && termcol >= termw) {
       // wrap
       if (fun != NULL) {
