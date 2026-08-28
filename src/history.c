@@ -65,6 +65,14 @@ ic_private bool history_update( history_t* h, const char* entry ) {
   return true;
 }
 
+// (re)create the empty entry the edit loop keeps at index 0 as the slot for
+// the line being edited; "" entries are never persisted, so an empty top
+// entry can only be that placeholder.
+ic_private void history_ensure_placeholder( history_t* h ) {
+  const char* top = history_get(h, 0);
+  if (top == NULL || top[0] != 0) { history_push(h, ""); }
+}
+
 static void history_delete_at( history_t* h, ssize_t idx ) {
   if (idx < 0 || idx >= h->count) return;
   mem_free(h->mem, h->elems[idx]);
@@ -146,16 +154,13 @@ ic_private bool history_search( const history_t* h, ssize_t from /*including*/, 
 
 ic_private void history_load_from(history_t* h, const char* fname, long max_entries ) {
   history_clear(h);
+  mem_free(h->mem, h->fname);
   h->fname = mem_strdup(h->mem,fname);
-  if (max_entries == 0) {
-    assert(h->elems == NULL);
-    return;
-  }
   if (max_entries < 0 || max_entries > IC_MAX_HISTORY) max_entries = IC_MAX_HISTORY;
-  h->elems = (const char**)mem_zalloc_tp_n(h->mem, char*, max_entries );
-  if (h->elems == NULL) return;
-  h->len = max_entries;
-  history_load(h);
+  mem_free(h->mem, h->elems);
+  h->elems = (max_entries == 0 ? NULL : (const char**)mem_zalloc_tp_n(h->mem, char*, max_entries));
+  h->len = (h->elems == NULL ? 0 : max_entries);
+  if (h->len > 0) { history_load(h); }
 }
 
 

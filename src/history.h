@@ -28,6 +28,7 @@ ic_private void     history_load( history_t* h );
 ic_private void     history_save( const history_t* h );
 
 ic_private bool     history_push( history_t* h, const char* entry );
+ic_private void     history_ensure_placeholder( history_t* h );
 ic_private bool     history_update( history_t* h, const char* entry );
 ic_private const char* history_get( const history_t* h, ssize_t n );
 ic_private void     history_remove_last(history_t* h);

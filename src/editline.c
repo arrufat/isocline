@@ -121,7 +121,11 @@ static void editor_start_modify(editor_t* eb ) {
 
 
 static bool editor_pos_is_at_end(editor_t* eb ) {
-  return (eb->pos == sbuf_len(eb->input));  
+  return (eb->pos == sbuf_len(eb->input));
+}
+
+static bool editor_is_empty(editor_t* eb ) {
+  return (eb->pos == 0 && editor_pos_is_at_end(eb));
 }
 
 //-------------------------------------------------------------
@@ -907,6 +911,21 @@ static void edit_paste(ic_env_t* env, editor_t* eb) {
 
 
 //-------------------------------------------------------------
+// Prompt mode
+//-------------------------------------------------------------
+
+static void edit_mode_set(ic_env_t* env, editor_t* eb, bool active) {
+  env->mode_active = active;
+  if (env->mode_callback != NULL) {
+    env->mode_callback(active, env->mode_arg);
+    // the callback may swap the history (ic_set_history), dropping the
+    // placeholder for the current input
+    history_ensure_placeholder(env->history);
+  }
+  edit_refresh(env, eb);
+}
+
+//-------------------------------------------------------------
 // Edit line: main edit loop
 //-------------------------------------------------------------
 
@@ -943,7 +962,7 @@ static char* edit_line( ic_env_t* env, const char* prompt_text )
   edit_write_prompt(env, &eb, 0, false);
 
   // always a history entry for the current input
-  history_push(env->history, "");
+  history_ensure_placeholder(env->history);
 
   // process keys
   code_t c;          // current key code
@@ -1011,10 +1030,8 @@ static char* edit_line( ic_env_t* env, const char* prompt_text )
     {
       char trig;
       if (!env->mode_active && env->mode_trigger != 0 && code_is_ascii_char(c, &trig) &&
-            trig == env->mode_trigger && eb.pos == 0 && editor_pos_is_at_end(&eb)) {
-        env->mode_active = true;
-        if (env->mode_callback != NULL) env->mode_callback(true, env->mode_arg);
-        edit_refresh(env, &eb);
+            trig == env->mode_trigger && editor_is_empty(&eb)) {
+        edit_mode_set(env, &eb, true);
         continue;
       }
     }
@@ -1035,7 +1052,7 @@ static char* edit_line( ic_env_t* env, const char* prompt_text )
     } 
     else if (c == KEY_CTRL_D) {
       // a no-op unless the line is empty, where a second press quits with NULL
-      if (eb.pos == 0 && editor_pos_is_at_end(&eb)) {
+      if (editor_is_empty(&eb)) {
         if (env->ctrl_d_exit_pending) break;
         edit_ctrl_d_exit_set(env, true);
         edit_refresh(env,&eb);
@@ -1049,11 +1066,9 @@ static char* edit_line( ic_env_t* env, const char* prompt_text )
         edit_esc_clear_set(env, false);
         edit_delete_all(env,&eb); // stays in the current mode
       }
-      else if (eb.pos == 0 && editor_pos_is_at_end(&eb)) {
+      else if (editor_is_empty(&eb)) {
         if (env->mode_active) {
-          env->mode_active = false;
-          if (env->mode_callback != NULL) env->mode_callback(false, env->mode_arg);
-          edit_refresh(env,&eb);
+          edit_mode_set(env, &eb, false);
         }
         else if (had_hint) edit_refresh(env,&eb); // repaint only to drop a ghost hint
         continue;
@@ -1063,11 +1078,9 @@ static char* edit_line( ic_env_t* env, const char* prompt_text )
         edit_refresh(env,&eb);
       }
     }
-    else if (c == KEY_BACKSP && env->mode_active && eb.pos == 0 && editor_pos_is_at_end(&eb)) {
+    else if (c == KEY_BACKSP && env->mode_active && editor_is_empty(&eb)) {
       // Backspace on an empty buffer exits the mode, mirroring Escape
-      env->mode_active = false;
-      if (env->mode_callback != NULL) env->mode_callback(false, env->mode_arg);
-      edit_refresh(env,&eb);
+      edit_mode_set(env, &eb, false);
     }
     else if (c == KEY_BELL /* ^G */ || c == KEY_CTRL_C) {
       edit_delete_all(env,&eb);
