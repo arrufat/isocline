@@ -849,7 +849,7 @@ ic_private ssize_t sbuf_for_each_row( stringbuf_t* sbuf, ssize_t termw, ssize_t 
 ic_private char* sbuf_strdup_from_utf8(stringbuf_t* sbuf) {
   ssize_t len = sbuf_len(sbuf);
   if (sbuf == NULL || len <= 0) return NULL;
-  char* s = mem_zalloc_tp_n(sbuf->mem, char, len);
+  char* s = mem_zalloc_tp_n(sbuf->mem, char, len + 1);
   if (s == NULL) return NULL;
   ssize_t dest = 0;
   for (ssize_t i = 0; i < len; ) {
