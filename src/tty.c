@@ -39,6 +39,7 @@ struct tty_s {
   bool      is_utf8;                // is the input stream in utf-8 mode?
   bool      has_term_resize_event;  // are resize events generated?
   bool      term_resize_event;      // did a term resize happen?
+  bool      input_closed;           // did a read hit EOF or an error?
   alloc_t*  mem;                    // memory allocator
   code_t    pushbuf[TTY_PUSH_MAX];  // push back buffer for full key codes
   ssize_t   push_count;
@@ -245,7 +246,7 @@ ic_private code_t tty_read(tty_t* tty)
     }
   }
   code_t code;
-  if (!tty_read_timeout(tty, -1, &code)) return KEY_NONE;
+  if (!tty_read_timeout(tty, -1, &code)) return (tty->input_closed ? KEY_EVENT_STOP : KEY_NONE);
   return code;
 }
 
@@ -480,6 +481,9 @@ static bool tty_readc_blocking(tty_t* tty, uint8_t* c) {
   if (nread < 0 && errno == EINTR) {
     // can happen on SIGWINCH signal for terminal resize
   }
+  else if (nread == 0 || (nread < 0 && errno != EAGAIN)) {
+    tty->input_closed = true;  // with VMIN=1 a zero read is a hangup
+  }
   return (nread == 1);
 }
 
@@ -673,6 +677,12 @@ static void sig_handler(int signum, siginfo_t* siginfo, void* uap ) {
   if (sh->signum == signum) {
     if (sigaction_is_valid(&sh->action.previous)) {
       (sh->action.previous.sa_sigaction)(signum, siginfo, uap);
+    }
+    else if (sh->action.previous.sa_handler == SIG_DFL && signum != SIGWINCH &&
+             signum != SIGTSTP && signum != SIGTTIN && signum != SIGTTOU) {
+      // no handler to chain to: take the default action instead of ignoring it
+      signal(signum, SIG_DFL);
+      raise(signum);
     }
   }
 }
